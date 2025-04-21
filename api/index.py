@@ -30,6 +30,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 gemini_model = genai.GenerativeModel('models/gemini-1.5-flash-002')
 
 # MongoDB - change to Vercel-compatible Atlas URL later
+
 client = MongoClient(os.getenv("MONGODB_URI", "mongodb://localhost:27017/"))
 db = client.travel_reviews
 users_collection = db.users
@@ -38,8 +39,12 @@ ratings_collection = db.ratings
 
 
 # Configure Upload Folder
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+import os
+
+UPLOAD_FOLDER = '/tmp/uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure the folder exists inside /tmp
+
+
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # USER AUTHENTICATION
