@@ -1,4 +1,3 @@
-# backend.py
 from flask import Flask, request, jsonify, send_from_directory, render_template
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -18,8 +17,10 @@ CORS(app)
 
 # Configuration (make sure these ENV vars are set on Vercel Dashboard too)
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key')
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Updated UPLOAD_FOLDER path for Vercel environment (use /tmp)
+UPLOAD_FOLDER = '/tmp/uploads'  # Using /tmp for Vercel compatibility
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure the folder exists inside /tmp
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 bcrypt = Bcrypt(app)
@@ -30,22 +31,11 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 gemini_model = genai.GenerativeModel('models/gemini-1.5-flash-002')
 
 # MongoDB - change to Vercel-compatible Atlas URL later
-
 client = MongoClient(os.getenv("MONGODB_URI", "mongodb://localhost:27017/"))
 db = client.travel_reviews
 users_collection = db.users
 reviews_collection = db.reviews
 ratings_collection = db.ratings
-
-
-# Configure Upload Folder
-import os
-
-UPLOAD_FOLDER = '/tmp/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure the folder exists inside /tmp
-
-
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # USER AUTHENTICATION
 @app.route('/signup', methods=['POST'])
@@ -61,7 +51,7 @@ def signup():
         return jsonify({"error": "Email already registered"}), 409
 
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    users_collection.insert_one ({
+    users_collection.insert_one({
         "name": name,
         "email": email,
         "password": hashed_password,
@@ -179,7 +169,6 @@ def add_comment():
     reviews_collection.update_one({"_id": ObjectId(review_id)}, {"$push": {"comments": {"user_email": user_email, "comment": comment}}})
     return jsonify({"message": "Comment added successfully!"}), 200
 
-
 @app.route('/profile', methods=['GET'])
 @jwt_required()
 def profile():
@@ -201,23 +190,18 @@ def profile():
 @app.route("/update_rating", methods=["POST"])
 def update_rating():
     data = request.json
-    print(f"Received data: {data}")  # Log the incoming data for debugging
-    
     review_id = data.get("reviewId")
     rating = data.get("rating")
 
     if not review_id or not rating:
-        print("Missing reviewId or rating")  # Log if any field is missing
         return jsonify({"error": "Review ID and rating are required."}), 400
 
     if not (1 <= rating <= 5):
-        print(f"Invalid rating: {rating}")  # Log if the rating is out of bounds
         return jsonify({"error": "Rating must be between 1 and 5."}), 400
 
     # Get the review and update the rating
     review = reviews_collection.find_one({"_id": ObjectId(review_id)})
     if not review:
-        print(f"Review with ID {review_id} not found.")  # Log if review doesn't exist
         return jsonify({"error": "Review not found."}), 404
 
     # Calculate new rating
@@ -236,15 +220,6 @@ def update_rating():
     )
 
     return jsonify({"message": "Rating updated successfully!"}), 200
-@app.route("/list_models", methods=["GET"])
-def list_models():
-    try:
-        # List available models and convert the generator into a list
-        models = list(genai.list_models())  # Convert the generator to a list
-        print(models)  # Prints the list of available models to the console for debugging
-        return jsonify(models)  # Returns the models as a JSON response to the client
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route("/generate_itinerary", methods=["POST"])
 def generate_itinerary():
@@ -288,9 +263,7 @@ def generate_itinerary():
         else:
             return jsonify({"error": "Failed to generate itinerary, no content returned."}), 500
     except Exception as e:
-        # Return any exception that occurs
         return jsonify({"error": str(e)}), 500
-    
 
 @app.route("/send-message", methods=["POST"])
 def send_message():
@@ -298,9 +271,6 @@ def send_message():
         name = request.form.get("name")
         email = request.form.get("email")
         message = request.form.get("message")
-
-        # Log the received data for debugging
-        app.logger.info(f"Received message from {name} ({email}): {message}")
 
         if not name or not email or not message:
             raise ValueError("Name, email, and message are required.")
@@ -314,26 +284,23 @@ def send_message():
         {message}
         """
 
-        # 🔁 CHANGE THIS TO YOUR EMAIL
-        sender_email = "travellers.verdict@gmail.com"   # <-- your Gmail (same one used for login)
-        receiver_email = "travellers.verdict@gmail.com"  # <-- where you want to receive the messages
-        app_password = "tbcs wayi ybok wtxi"  # <-- your Gmail app password
+        # Update this with the sender and receiver email details
+        sender_email = "travellers.verdict@gmail.com"  # Your Gmail
+        receiver_email = "travellers.verdict@gmail.com"  # Where you want to receive the messages
+        app_password = "your_app_password_here"  # Your Gmail app password
 
         msg = MIMEText(msg_body)
         msg["Subject"] = "New Contact Message"
         msg["From"] = sender_email
         msg["To"] = receiver_email
 
-        # Attempt to send the email
+        # Send the email
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
-            server.login(sender_email, app_password)  # 🔒 login securely
+            server.login(sender_email, app_password)
             server.send_message(msg)
 
-        app.logger.info("Message sent successfully")
         return jsonify({"message": "Message sent successfully!"}), 200
-    
-    except Exception as e:
-        app.logger.error(f"Error sending message: {e}")
-        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
+    except Exception as e:
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
